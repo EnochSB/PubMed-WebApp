@@ -176,7 +176,6 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
                 user.user_id,
                 user.email,
                 user.display_name,
-            )
         )
     except (ArticleRepositoryError, ChatMemoryError) as error:
         st.error(str(error))
