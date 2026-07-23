@@ -1,7 +1,8 @@
 # PubMed 논문 분석 웹 애플리케이션
 
-이 브랜치는 팀 요구사항 중 **3번(개요)**과 **4번(논문 검색)**만 구현합니다.
-PubMed 수집, DB 저장, 챗봇, CSV 다운로드 등 다른 요구사항은 포함하지 않습니다.
+이 브랜치는 팀 요구사항 중 **3번(개요)**, **4번(논문 검색)**,
+**5번(메모리 챗봇)**, **6번(필터 결과 CSV 다운로드)**을 통합합니다.
+PubMed 수집과 DB 저장 등 다른 요구사항은 포함하지 않습니다.
 
 ## 실행
 
@@ -48,7 +49,9 @@ st.session_state["last_collection_skipped_count"] = skipped_count
 - `pubmed_app/domain`: 화면·DB에 독립적인 데이터 모델
 - `pubmed_app/repositories`: SQLite 조회 및 저장소 인터페이스
 - `pubmed_app/services`: 개요 집계와 검색 조건 검증
-- `pubmed_app/ui`: Streamlit 개요/논문 목록 화면
+- `pubmed_app/ui`: Streamlit 개요/논문 목록 및 CSV 다운로드 화면
+- `pubmed_app/chatbot.py`: 대화 이력을 기억하는 논문 탐색 챗봇
+- `pubmed_app/paper_search.py`: 챗봇 조회와 CSV 변환
 - `app.py`: 객체 조립과 Streamlit 실행 진입점
 
 ## 테스트
