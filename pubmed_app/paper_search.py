@@ -31,12 +31,15 @@ class PaperSearchRepository:
         self,
         db_path: str | Path = "pubmed.db",
         table_name: str = "papers",
+        *,
+        user_id: str,
     ) -> None:
         self.db_path = Path(db_path)
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
             raise ValueError("논문 테이블 이름에는 영문자, 숫자, 밑줄만 사용할 수 있습니다.")
         self._table_name = table_name
         self._quoted_table = f'"{table_name}"'
+        self._user_id = user_id
 
     def _connect(self) -> sqlite3.Connection:
         # URI의 mode=ro를 사용해 이 모듈이 수집 데이터나 스키마를 변경하지 못하게 한다.
@@ -56,7 +59,14 @@ class PaperSearchRepository:
                     )
                 ) as cursor:
                     row = cursor.fetchone()
-            return row is not None
+                with closing(
+                    connection.execute(
+                        "SELECT 1 FROM sqlite_master "
+                        "WHERE type='table' AND name='user_articles'"
+                    )
+                ) as relation_cursor:
+                    relation_row = relation_cursor.fetchone()
+            return row is not None and relation_row is not None
         except sqlite3.Error:
             return False
 
@@ -66,8 +76,17 @@ class PaperSearchRepository:
         with closing(self._connect()) as connection:
             with closing(
                 connection.execute(
-                    f"SELECT DISTINCT journal FROM {self._quoted_table} "
-                    "WHERE journal IS NOT NULL AND TRIM(journal) <> '' ORDER BY journal"
+                    f"""
+                    SELECT DISTINCT article.journal
+                    FROM {self._quoted_table} AS article
+                    INNER JOIN user_articles AS ownership
+                        ON ownership.pmid = article.pmid
+                    WHERE ownership.user_id = ?
+                      AND article.journal IS NOT NULL
+                      AND TRIM(article.journal) <> ''
+                    ORDER BY article.journal
+                    """,
+                    (self._user_id,),
                 )
             ) as cursor:
                 rows = cursor.fetchall()
@@ -78,27 +97,30 @@ class PaperSearchRepository:
         if not self.is_available():
             return pd.DataFrame(columns=PAPER_COLUMNS)
 
-        conditions: list[str] = []
-        parameters: list[object] = []
+        conditions: list[str] = ["ownership.user_id = ?"]
+        parameters: list[object] = [self._user_id]
 
         if filters.title.strip():
-            conditions.append("title LIKE ? ESCAPE '\\'")
+            conditions.append("article.title LIKE ? ESCAPE '\\'")
             escaped = self._escape_like(filters.title.strip())
             parameters.append(f"%{escaped}%")
         if filters.start_year is not None:
-            conditions.append("pub_year >= ?")
+            conditions.append("article.pub_year >= ?")
             parameters.append(filters.start_year)
         if filters.end_year is not None:
-            conditions.append("pub_year <= ?")
+            conditions.append("article.pub_year <= ?")
             parameters.append(filters.end_year)
         if filters.journal.strip():
-            conditions.append("journal = ?")
+            conditions.append("article.journal = ?")
             parameters.append(filters.journal.strip())
 
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         query = (
-            f"SELECT {', '.join(PAPER_COLUMNS)} FROM {self._quoted_table}"
-            f"{where_clause} ORDER BY pub_year DESC, pmid DESC"
+            "SELECT "
+            + ", ".join(f"article.{column}" for column in PAPER_COLUMNS)
+            + f" FROM {self._quoted_table} AS article"
+            + " INNER JOIN user_articles AS ownership ON ownership.pmid = article.pmid"
+            + f"{where_clause} ORDER BY article.pub_year DESC, article.pmid DESC"
         )
         # 커서를 명시적으로 닫아 Windows에서도 DB 파일 잠금이 남지 않게 한다.
         with closing(self._connect()) as connection:
