@@ -31,6 +31,37 @@ SAMPLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </PubmedArticleSet>
 """
 
+MULTIPLE_PUBLICATION_DATES_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>10000001</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue><PubDate><Year>2024</Year></PubDate></JournalIssue>
+          <Title>Example Journal</Title>
+        </Journal>
+        <ArticleDate><Year>2021</Year><Month>09</Month><Day>02</Day></ArticleDate>
+        <ArticleTitle>Online first article</ArticleTitle>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID>10000002</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue><PubDate><MedlineDate>2020 Jan-Feb</MedlineDate></PubDate></JournalIssue>
+          <Title>Another Journal</Title>
+        </Journal>
+        <ArticleDate><Year>2021</Year><Month>01</Month><Day>10</Day></ArticleDate>
+        <ArticleTitle>Print first article</ArticleTitle>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>
+"""
+
 
 class SearchConditionsTest(unittest.TestCase):
     """PubMed 검색 조건의 입력값 검증 규칙을 테스트합니다."""
@@ -62,6 +93,14 @@ class PubMedXmlParserTest(unittest.TestCase):
         self.assertEqual(article.journal, "Example Journal")
         self.assertEqual(article.pub_year, 2024)
         self.assertEqual(article.authors, "Min Su Kim, Study Group")
+
+    def test_uses_earlier_year_when_print_and_electronic_dates_differ(self) -> None:
+        """인쇄일과 전자출판일 중 더 이른 연도가 저장되는지 확인합니다."""
+
+        articles = PubMedXmlParser().parse(MULTIPLE_PUBLICATION_DATES_XML)
+
+        self.assertEqual(articles[0].pub_year, 2021)
+        self.assertEqual(articles[1].pub_year, 2020)
 
 
 if __name__ == "__main__":

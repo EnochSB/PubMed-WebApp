@@ -15,7 +15,10 @@ from pubmed_app.paper_search import PaperSearchRepository
 from pubmed_app.repositories.sqlite_article_repository import SQLiteArticleRepository
 from pubmed_app.services.article_search_service import ArticleSearchService
 from pubmed_app.services.overview_service import OverviewService
-from pubmed_app.ui.article_search_page import render_article_search_page
+from pubmed_app.ui.article_search_page import (
+    SEARCH_TAB_REQUEST_KEY,
+    render_article_search_page,
+)
 from pubmed_app.ui.collection_snapshot import (
     LAST_COLLECTION_NEW_COUNT_KEY,
     LAST_COLLECTION_SKIPPED_COUNT_KEY,
@@ -159,7 +162,16 @@ def main() -> None:
         st.metric("신규 수집 논문", f"{collection_snapshot.new_count:,}편")
         st.metric("중복 Skip 논문", f"{collection_snapshot.skipped_count:,}편")
 
-    overview_tab, search_tab, chatbot_tab = st.tabs(["개요", "논문 목록", "챗봇"])
+    # 검색 버튼 콜백이 남긴 요청을 이번 렌더링에만 소비해 검색 탭을 유지한다.
+    default_tab = (
+        "논문 목록"
+        if st.session_state.pop(SEARCH_TAB_REQUEST_KEY, False)
+        else None
+    )
+    overview_tab, search_tab, chatbot_tab = st.tabs(
+        ["개요", "논문 목록", "챗봇"],
+        default=default_tab,
+    )
     with overview_tab:
         render_overview_page(overview_service, collection_snapshot)
     with search_tab:
