@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from pubmed_app.chat_memory import SQLiteConversationStore
 from pubmed_app.medical_middleware import (
     MEDICAL_ADVICE_NOTICE,
+    MEDICAL_CLASSIFIER_STREAM_TAG,
     MedicalAdvicePolicy,
     build_medical_middleware,
 )
@@ -147,6 +148,13 @@ class ChatLanguageModel(Protocol):
     ) -> str:
         """대화 이력과 논문 문맥을 받아 답변을 생성한다."""
 
+    def stream_reply(
+        self,
+        messages: Sequence[ChatMessage],
+        paper_context: str,
+    ) -> Iterator[str]:
+        """대화 이력과 논문 문맥을 받아 답변 조각을 순서대로 반환한다."""
+
     def classify_literature_question(
         self,
         messages: Sequence[ChatMessage],
@@ -252,6 +260,64 @@ class OpenAIChatModel:
             raise ChatbotError("OpenAI 모델이 빈 답변을 반환했습니다.")
         return answer
 
+    def stream_reply(
+        self,
+        messages: Sequence[ChatMessage],
+        paper_context: str,
+    ) -> Iterator[str]:
+        """에이전트의 최종 답변 텍스트를 생성되는 순서대로 반환한다."""
+
+        # 스트리밍 모델 호출 직전에도 .env의 API 키를 다시 읽는다.
+        load_dotenv()
+        prompt_messages = [
+            {"role": message.role, "content": message.content}
+            for message in messages
+        ]
+        if paper_context:
+            instructions = (
+                "당신은 PubMed 논문 메타데이터를 탐색하는 한국어 도우미입니다. "
+                "아래 참고 논문에 포함된 정보만 사용하고, 근거가 없으면 모른다고 "
+                "답하세요.\n\n"
+                f"[참고 논문]\n{paper_context}"
+            )
+        else:
+            instructions = (
+                "당신은 친절하고 정확한 한국어 AI 도우미입니다. "
+                "사용자의 일반 질문에 직접적이고 이해하기 쉽게 답하세요."
+            )
+
+        model = self._model or self._create_model()
+        agent = create_agent(
+            model=model,
+            tools=[],
+            system_prompt=instructions,
+            middleware=build_medical_middleware(),
+        )
+
+        has_text = False
+        try:
+            for message, metadata in agent.stream(
+                {"messages": prompt_messages},
+                stream_mode="messages",
+            ):
+                # 의료 의미 분류용 BLOCK/ALLOW는 내부 제어값이므로 화면에 출력하지 않는다.
+                if MEDICAL_CLASSIFIER_STREAM_TAG in metadata.get("tags", []):
+                    continue
+                if not isinstance(message, AIMessage):
+                    continue
+                text = message.text
+                if not text:
+                    continue
+                has_text = True
+                yield text
+        except OpenAIError as error:
+            raise ChatbotError(
+                "OpenAI 모델 스트리밍에 실패했습니다. 잠시 후 다시 시도해 주세요."
+            ) from error
+
+        if not has_text:
+            raise ChatbotError("OpenAI 모델이 빈 답변을 반환했습니다.")
+
     @staticmethod
     def _create_model() -> ChatOpenAI:
         """환경변수의 API 키를 검증하고 Responses API용 ChatOpenAI를 생성한다."""
@@ -286,41 +352,58 @@ class LiteratureChatbot:
     def reply(self, question: str) -> str:
         """질문을 논문 관련 여부로 분류하고 규칙에 맞는 답변을 생성한다."""
 
+        return "".join(self.stream_reply(question))
+
+    def stream_reply(self, question: str) -> Iterator[str]:
+        """사용자 질문을 저장하고 챗봇 답변을 화면에 표시할 조각으로 반환한다."""
+
         clean_question = question.strip()
         self.memory.add("user", clean_question)
 
         # DB 검색 전에 같은 정책을 적용해 논문 분류 경로에서도 의료 질문을 차단한다.
         if self.safety_policy.should_block(clean_question):
-            answer = MEDICAL_ADVICE_NOTICE
+            response_stream: Iterator[str] = iter([MEDICAL_ADVICE_NOTICE])
         elif self._is_literature_question():
-            answer = self._reply_to_literature_question(clean_question)
+            response_stream = self._stream_literature_question(clean_question)
         else:
             # 일반 질문은 논문 DB를 검색하지 않고 이전 대화와 함께 OpenAI에 전달한다.
-            answer = self.language_model.generate_reply(self.memory.messages, "")
+            response_stream = self.language_model.stream_reply(self.memory.messages, "")
 
+        answer_parts: list[str] = []
+        for chunk in response_stream:
+            if not chunk:
+                continue
+            answer_parts.append(chunk)
+            yield chunk
+
+        answer = "".join(answer_parts)
+        if not answer.strip():
+            raise ChatbotError("챗봇이 빈 답변을 반환했습니다.")
         self.memory.add("assistant", answer)
-        return answer
 
     def _is_literature_question(self) -> bool:
         """GPT-5.4 mini로 최근 대화와 최신 입력의 논문 관련 여부를 판별한다."""
 
         return self.language_model.classify_literature_question(self.memory.messages)
 
-    def _reply_to_literature_question(self, question: str) -> str:
-        """논문 질문을 DB에서 검색하고 결과 유무에 따라 답변을 결정한다."""
+    def _stream_literature_question(self, question: str) -> Iterator[str]:
+        """논문 검색 결과에 따른 안내 또는 모델 답변 조각을 반환한다."""
 
         if not self.repository.is_available():
-            return "아직 조회할 논문 DB가 없습니다. 논문 수집이 완료된 뒤 다시 질문해 주세요."
+            yield "아직 조회할 논문 DB가 없습니다. 논문 수집이 완료된 뒤 다시 질문해 주세요."
+            return
 
         if self._is_follow_up(question) and self.memory.last_keyword:
-            return self._search_answer(self.memory.last_keyword)
+            yield from self._stream_search_answer(self.memory.last_keyword)
+            return
 
         keyword = self._extract_keyword(question)
         if not keyword:
-            return "질문에 해당하는 저장 논문을 찾지 못했습니다."
+            yield "질문에 해당하는 저장 논문을 찾지 못했습니다."
+            return
 
         self.memory.last_keyword = keyword
-        return self._search_answer(keyword)
+        yield from self._stream_search_answer(keyword)
 
     @staticmethod
     def _is_follow_up(question: str) -> bool:
@@ -338,15 +421,16 @@ class LiteratureChatbot:
             keyword = keyword.replace(phrase, " ")
         return " ".join(keyword.split()).strip(" ?.!")
 
-    def _search_answer(self, keyword: str) -> str:
-        """제목 검색 결과를 LLM 문맥으로 변환해 자연어 답변을 생성한다."""
+    def _stream_search_answer(self, keyword: str) -> Iterator[str]:
+        """제목 검색 결과를 LLM 문맥으로 변환해 답변 조각을 반환한다."""
 
         papers = self.repository.search(PaperFilter(title=keyword))
         if papers.empty:
-            return f"‘{keyword}’이(가) 제목에 포함된 저장 논문을 찾지 못했습니다."
+            yield f"‘{keyword}’이(가) 제목에 포함된 저장 논문을 찾지 못했습니다."
+            return
 
         paper_context = self._build_paper_context(papers.head(5))
-        return self.language_model.generate_reply(self.memory.messages, paper_context)
+        yield from self.language_model.stream_reply(self.memory.messages, paper_context)
 
     @staticmethod
     def _build_paper_context(papers: pd.DataFrame) -> str:

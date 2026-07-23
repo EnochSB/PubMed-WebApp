@@ -5,7 +5,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 
 from pubmed_app.chat_memory import SQLiteConversationStore
 from pubmed_app.chatbot import (
@@ -48,6 +48,18 @@ class FakeLanguageModel:
 
         self.calls.append((list(messages), paper_context))
         return f"LLM 답변: {paper_context}"
+
+    def stream_reply(
+        self,
+        messages: list[ChatMessage],
+        paper_context: str,
+    ):
+        """고정 답변을 두 조각으로 나눠 스트리밍 동작을 흉내 낸다."""
+
+        answer = self.generate_reply(messages, paper_context)
+        midpoint = max(1, len(answer) // 2)
+        yield answer[:midpoint]
+        yield answer[midpoint:]
 
 
 class FeatureFiveSixTest(unittest.TestCase):
@@ -143,6 +155,28 @@ class FeatureFiveSixTest(unittest.TestCase):
         self.assertEqual(1, len(language_model.classification_calls))
         self.assertEqual(1, len(language_model.calls))
 
+    def test_chatbot_streams_chunks_and_saves_complete_answer(self) -> None:
+        """스트림 조각은 즉시 반환하고 완성된 답변만 SQLite에 저장한다."""
+
+        language_model = FakeLanguageModel([False])
+        memory = ConversationMemory(self.memory_store, "stream-user")
+        chatbot = LiteratureChatbot(self.repository, memory, language_model)
+
+        response_stream = chatbot.stream_reply("안녕하세요")
+        first_chunk = next(response_stream)
+
+        self.assertTrue(first_chunk)
+        self.assertEqual(["user"], [message.role for message in memory.messages])
+
+        answer = first_chunk + "".join(response_stream)
+
+        self.assertEqual("LLM 답변: ", answer)
+        self.assertEqual(
+            ["user", "assistant"],
+            [message.role for message in memory.messages],
+        )
+        self.assertEqual(answer, memory.messages[-1].content)
+
     @patch("pubmed_app.chatbot.load_dotenv")
     def test_openai_semantically_classifies_literature_context(
         self,
@@ -232,6 +266,44 @@ class FeatureFiveSixTest(unittest.TestCase):
         self.assertTrue(model_arguments["use_responses_api"])
         self.assertEqual(2, len(create_agent_mock.call_args.kwargs["middleware"]))
         self.assertEqual("답변", answer)
+
+    @patch("pubmed_app.chatbot.load_dotenv")
+    @patch("pubmed_app.chatbot.create_agent")
+    def test_openai_streams_only_final_answer_tokens(
+        self,
+        create_agent_mock: Mock,
+        load_dotenv_mock: Mock,
+    ) -> None:
+        """의료 분류 제어값은 숨기고 최종 답변 토큰만 반환한다."""
+
+        agent = Mock()
+        agent.stream.return_value = iter(
+            [
+                (
+                    AIMessageChunk(content="ALLOW"),
+                    {"tags": ["medical_intent_classifier"]},
+                ),
+                (AIMessageChunk(content="스트리밍 "), {}),
+                (AIMessageChunk(content="답변"), {}),
+            ]
+        )
+        create_agent_mock.return_value = agent
+        language_model = OpenAIChatModel(model=Mock())
+
+        chunks = list(
+            language_model.stream_reply(
+                [ChatMessage(role="user", content="안녕하세요")],
+                "",
+            )
+        )
+
+        load_dotenv_mock.assert_called_once_with()
+        self.assertEqual(["스트리밍 ", "답변"], chunks)
+        agent.stream.assert_called_once()
+        self.assertEqual(
+            "messages",
+            agent.stream.call_args.kwargs["stream_mode"],
+        )
 
 
 if __name__ == "__main__":
