@@ -18,11 +18,18 @@ from pubmed_app.services.article_search_service import (
 
 SEARCH_RESULTS_KEY = "requirement_4_search_results"
 SEARCH_EXECUTED_KEY = "requirement_4_search_executed"
+SEARCH_TAB_REQUEST_KEY = "requirement_4_keep_search_tab"
+
+
+def _request_search_tab() -> None:
+    """검색 폼 제출로 재실행될 때 논문 목록 탭을 다시 선택하도록 요청한다."""
+
+    st.session_state[SEARCH_TAB_REQUEST_KEY] = True
 
 
 def render_article_search_page(service: ArticleSearchService) -> None:
     st.subheader("논문 검색")
-    st.caption("제목 검색어, 출판연도 범위, 저널 조건을 함께 적용할 수 있습니다.")
+    st.caption("제목·초록 검색어, 출판연도 범위, 저널 조건을 함께 적용할 수 있습니다.")
 
     try:
         options = service.get_options()
@@ -32,7 +39,7 @@ def render_article_search_page(service: ArticleSearchService) -> None:
 
     with st.form("article_search_form"):
         title_keyword = st.text_input(
-            "제목 검색어",
+            "검색어",
             placeholder="예: COVID-19 vaccine",
         )
         start_column, end_column, journal_column = st.columns(3)
@@ -59,6 +66,7 @@ def render_article_search_page(service: ArticleSearchService) -> None:
             "검색",
             type="primary",
             use_container_width=True,
+            on_click=_request_search_tab,
         )
 
     if submitted:
