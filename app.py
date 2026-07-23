@@ -32,6 +32,7 @@ from pubmed_app.ui.collection_snapshot import (
     read_collection_snapshot,
 )
 from pubmed_app.ui.overview_page import render_overview_page
+from pubmed_app.ui.theme import apply_soft_glass_theme
 from pubmed_app.views import ChatbotView
 
 
@@ -80,7 +81,8 @@ class PubMedCollectionPanel:
     def _render_search_form() -> tuple[str, int, int, int] | None:
         current_year = datetime.now().year
         with st.sidebar:
-            st.header("PubMed 검색 조건")
+            st.header("논문 수집")
+            st.caption("PubMed 검색 조건을 입력해 내 논문 저장소를 채워 보세요.")
             # 폼을 사용해 수집 버튼을 누를 때만 네 조건을 한 번에 처리한다.
             with st.form("pubmed_search_form"):
                 keyword = st.text_input(
@@ -107,7 +109,7 @@ class PubMedCollectionPanel:
                     value=100,
                 )
                 submitted = st.form_submit_button(
-                    "논문 수집", type="primary", use_container_width=True
+                    "논문 수집 시작", type="primary", use_container_width=True
                 )
 
         if not submitted:
@@ -170,12 +172,12 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
             chatbot_repository,
             chat_memory_store,
         ) = build_services(
-                str(config.database_path),
-                config.article_table,
-                config.top_journal_limit,
-                user.user_id,
-                user.email,
-                user.display_name,
+            str(config.database_path),
+            config.article_table,
+            config.top_journal_limit,
+            user.user_id,
+            user.email,
+            user.display_name,
         )
     except (ArticleRepositoryError, ChatMemoryError) as error:
         st.error(str(error))
@@ -185,8 +187,17 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
     PubMedCollectionPanel(collection_service).render()
     collection_snapshot = read_collection_snapshot(st.session_state)
 
-    st.title("메디톡톡")
-    st.caption("내가 수집한 PubMed 논문을 저장하고 분석·탐색합니다.")
+    # 시안의 큰 반투명 브랜드 카드를 상단에 배치한다.
+    with st.container(border=True, key="soft_glass_header"):
+        title_column, status_column = st.columns(
+            [4, 1], vertical_alignment="center"
+        )
+        with title_column:
+            st.title("메디톡톡")
+            st.caption("내가 수집한 PubMed 논문을 저장하고 분석·탐색합니다.")
+        with status_column:
+            st.markdown("##### 🧬 PubMed Research")
+            st.caption("Soft Glass Workspace")
 
     with st.sidebar:
         st.markdown(f"**{user.display_name}**")
@@ -218,6 +229,7 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="메디톡톡", page_icon="🩺", layout="wide")
+    apply_soft_glass_theme()
     try:
         user = get_authenticated_user()
     except InvalidIdentityError as error:

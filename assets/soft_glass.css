@@ -1,0 +1,330 @@
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-bg-strong: rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(255, 255, 255, 0.88);
+  --glass-outline: rgba(111, 126, 216, 0.16);
+  --glass-shadow: 0 14px 40px rgba(74, 86, 145, 0.12);
+  --glass-shadow-soft: 0 8px 24px rgba(74, 86, 145, 0.09);
+  --glass-primary: #5c63e6;
+  --glass-primary-dark: #454dcc;
+  --glass-cyan: #37a9c9;
+  --glass-text: #17223b;
+  --glass-muted: #6f7894;
+  --glass-danger: #e86a73;
+  --glass-radius: 22px;
+  --glass-radius-small: 14px;
+}
+
+/* 앱 배경에 시안의 연한 청색·보라색 빛을 재현한다. */
+[data-testid="stAppViewContainer"] {
+  background:
+    radial-gradient(circle at 8% 5%, rgba(104, 190, 255, 0.25), transparent 30rem),
+    radial-gradient(circle at 94% 4%, rgba(172, 130, 255, 0.22), transparent 32rem),
+    linear-gradient(135deg, #eaf3ff 0%, #f5f3ff 48%, #eef5ff 100%);
+  color: var(--glass-text);
+}
+
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stMain"] {
+  background: transparent;
+}
+
+[data-testid="stMainBlockContainer"] {
+  max-width: 1540px;
+  padding-top: 2rem;
+  padding-bottom: 3.5rem;
+}
+
+/* 사이드바는 높은 불투명도를 유지해 입력 위젯의 가독성을 보장한다. */
+[data-testid="stSidebar"] {
+  background: rgba(247, 250, 255, 0.76);
+  border-right: 1px solid var(--glass-border);
+  box-shadow: 12px 0 34px rgba(66, 83, 143, 0.09);
+  backdrop-filter: blur(22px) saturate(135%);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+  padding: 1.15rem 1rem 2rem;
+}
+
+[data-testid="stSidebar"] hr {
+  border-color: rgba(92, 99, 230, 0.13);
+}
+
+h1, h2, h3, h4, h5, h6,
+[data-testid="stHeadingWithActionElements"] {
+  color: var(--glass-text);
+  letter-spacing: -0.025em;
+}
+
+h1 {
+  font-weight: 800;
+}
+
+[data-testid="stCaptionContainer"] {
+  color: var(--glass-muted);
+}
+
+/* 앱 상단 브랜드 헤더 */
+.st-key-soft_glass_header [data-testid="stVerticalBlockBorderWrapper"] {
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.88), rgba(249, 247, 255, 0.72));
+  border: 1px solid var(--glass-border);
+  border-radius: 26px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px) saturate(135%);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  padding: 0.35rem 0.65rem;
+}
+
+.st-key-soft_glass_header h1 {
+  margin-bottom: 0.1rem;
+  background: linear-gradient(90deg, #1b2b55 0%, #4c55d6 68%, #319cbf 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 탭을 반투명 탐색 바처럼 표시한다. */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  gap: 0.45rem;
+  padding: 0.45rem;
+  margin: 1.1rem 0 1.35rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+[data-testid="stTabs"] [data-baseweb="tab"] {
+  min-height: 2.85rem;
+  padding: 0.65rem 1.35rem;
+  border-radius: 13px;
+  color: var(--glass-muted);
+  font-weight: 700;
+}
+
+[data-testid="stTabs"] [aria-selected="true"] {
+  color: var(--glass-primary);
+  background: rgba(92, 99, 230, 0.09);
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+  background-color: var(--glass-primary);
+  height: 3px;
+  border-radius: 999px;
+}
+
+/* 폼과 주요 콘텐츠 카드를 동일한 Glass 표면으로 통일한다. */
+[data-testid="stForm"],
+.st-key-overview_year_chart [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-overview_journal_chart [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-article_results_card [data-testid="stVerticalBlockBorderWrapper"],
+.st-key-chat_panel [data-testid="stVerticalBlockBorderWrapper"] {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+
+[data-testid="stForm"] {
+  padding: 1.15rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stForm"] {
+  background: rgba(255, 255, 255, 0.58);
+  border-radius: 20px;
+}
+
+/* 통계 카드는 시안처럼 거의 불투명하게 유지한다. */
+[data-testid="stMetric"] {
+  min-height: 126px;
+  padding: 1.15rem 1.25rem;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  outline: 1px solid var(--glass-outline);
+  border-radius: 20px;
+  box-shadow: var(--glass-shadow-soft);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+[data-testid="stMetric"]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(74, 86, 145, 0.14);
+}
+
+[data-testid="stMetricLabel"] {
+  color: var(--glass-muted);
+  font-weight: 700;
+}
+
+[data-testid="stMetricValue"] {
+  color: var(--glass-primary);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+
+/* 입력 요소 */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div,
+[data-testid="stTextArea"] textarea {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(98, 112, 180, 0.2) !important;
+  border-radius: var(--glass-radius-small) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+[data-baseweb="input"] > div:focus-within,
+[data-baseweb="select"] > div:focus-within {
+  border-color: rgba(92, 99, 230, 0.62) !important;
+  box-shadow: 0 0 0 3px rgba(92, 99, 230, 0.1);
+}
+
+/* 기본·다운로드 버튼을 동일한 둥근 체계로 맞춘다. */
+.stButton > button,
+.stDownloadButton > button,
+[data-testid="stFormSubmitButton"] > button {
+  min-height: 2.75rem;
+  border-radius: var(--glass-radius-small);
+  border: 1px solid rgba(92, 99, 230, 0.2);
+  font-weight: 750;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover,
+[data-testid="stFormSubmitButton"] > button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(92, 99, 230, 0.52);
+  box-shadow: 0 8px 18px rgba(76, 85, 190, 0.15);
+}
+
+.stButton > button[kind="primary"],
+[data-testid="stFormSubmitButton"] > button[kind="primary"] {
+  color: #fff;
+  background: linear-gradient(135deg, #6671ef 0%, #525bdc 55%, #448fd4 100%);
+  border: 0;
+  box-shadow: 0 9px 22px rgba(82, 91, 220, 0.28);
+}
+
+/* 차트·데이터프레임은 불투명 표면으로 정보 밀도를 유지한다. */
+[data-testid="stVegaLiteChart"],
+[data-testid="stArrowVegaLiteChart"],
+[data-testid="stDataFrame"] {
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(106, 119, 184, 0.13);
+  border-radius: 16px;
+}
+
+[data-testid="stAlert"] {
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(74, 86, 145, 0.07);
+}
+
+/* 사용자·AI 메시지를 서로 다른 Glass 말풍선으로 구분한다. */
+[data-testid="stChatMessage"] {
+  margin: 0.65rem 0;
+  padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  box-shadow: 0 7px 20px rgba(74, 86, 145, 0.08);
+}
+
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+  background: linear-gradient(135deg, rgba(92, 99, 230, 0.13), rgba(55, 169, 201, 0.09));
+}
+
+[data-testid="stChatInput"] {
+  background: rgba(250, 252, 255, 0.94);
+  border: 1px solid rgba(92, 99, 230, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 10px 28px rgba(74, 86, 145, 0.13);
+}
+
+/* 로그인 랜딩 화면 */
+.soft-glass-landing {
+  max-width: 780px;
+  margin: 9vh auto 1.5rem;
+  padding: 3.7rem 3.2rem;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--glass-border);
+  border-radius: 30px;
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(24px) saturate(135%);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+}
+
+.soft-glass-landing__icon {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 1.2rem;
+  place-items: center;
+  color: white;
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(145deg, #6974f1, #4f58d7 60%, #42a2c5);
+  border-radius: 22px;
+  box-shadow: 0 12px 28px rgba(82, 91, 220, 0.3);
+}
+
+.soft-glass-landing__eyebrow {
+  color: var(--glass-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.soft-glass-landing__title {
+  margin: 0.45rem 0 0;
+  color: var(--glass-text);
+  font-size: clamp(2.7rem, 6vw, 4.2rem);
+  font-weight: 850;
+  letter-spacing: -0.055em;
+}
+
+.soft-glass-landing__description {
+  max-width: 620px;
+  margin: 1.25rem auto 0;
+  color: var(--glass-muted);
+  font-size: 1.08rem;
+  line-height: 1.8;
+}
+
+@media (max-width: 900px) {
+  [data-testid="stMainBlockContainer"] {
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  [data-testid="stMetric"] {
+    min-height: 105px;
+  }
+
+  [data-testid="stTabs"] [data-baseweb="tab"] {
+    padding-inline: 0.8rem;
+  }
+
+  .soft-glass-landing {
+    margin-top: 3vh;
+    padding: 2.5rem 1.35rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+

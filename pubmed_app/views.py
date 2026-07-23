@@ -127,7 +127,7 @@ class ChatbotView:
             return
 
         # 대화 영역을 입력창보다 먼저 만들면 새 메시지도 항상 입력창 위에 표시된다.
-        conversation_container = st.container()
+        conversation_container = st.container(border=True, key="chat_panel")
         with conversation_container:
             for message in messages:
                 with st.chat_message(message.role):

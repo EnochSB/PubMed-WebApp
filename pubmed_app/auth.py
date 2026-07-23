@@ -53,41 +53,11 @@ def render_landing_page() -> None:
 
     st.markdown(
         """
-        <style>
-        .meditoktok-hero {
-            max-width: 760px;
-            margin: 10vh auto 2rem auto;
-            padding: 3.5rem 3rem;
-            border: 1px solid rgba(49, 51, 63, 0.14);
-            border-radius: 24px;
-            background: linear-gradient(145deg, #f7fbff 0%, #eef7f5 100%);
-            box-shadow: 0 18px 50px rgba(26, 71, 88, 0.10);
-            text-align: center;
-        }
-        .meditoktok-eyebrow {
-            color: #147d72;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            margin-bottom: 0.6rem;
-        }
-        .meditoktok-title {
-            color: #16343f;
-            font-size: 3.4rem;
-            font-weight: 800;
-            margin: 0;
-        }
-        .meditoktok-description {
-            color: #47636d;
-            font-size: 1.15rem;
-            line-height: 1.8;
-            margin: 1.4rem auto 0 auto;
-            max-width: 610px;
-        }
-        </style>
-        <section class="meditoktok-hero">
-            <div class="meditoktok-eyebrow">PUBMED RESEARCH ASSISTANT</div>
-            <h1 class="meditoktok-title">메디톡톡</h1>
-            <p class="meditoktok-description">
+        <section class="soft-glass-landing">
+            <div class="soft-glass-landing__icon">+</div>
+            <div class="soft-glass-landing__eyebrow">PUBMED RESEARCH ASSISTANT</div>
+            <h1 class="soft-glass-landing__title">메디톡톡</h1>
+            <p class="soft-glass-landing__description">
                 메디톡톡은 논문을 수집하고, 수집한 논문 데이터를 안전하게 저장하며,
                 저장된 논문 데이터를 분석해 연구 흐름을 더 쉽게 탐색하도록 돕습니다.
             </p>
