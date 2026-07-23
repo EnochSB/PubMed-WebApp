@@ -9,9 +9,11 @@ from langchain_core.messages import AIMessage
 
 from pubmed_app.chat_memory import SQLiteConversationStore
 from pubmed_app.chatbot import (
+    LITERATURE_CLASSIFIER_PROMPT,
     OPENAI_MODEL,
     ChatMessage,
     ConversationMemory,
+    LiteratureQuestionClassification,
     LiteratureChatbot,
     OpenAIChatModel,
 )
@@ -21,10 +23,21 @@ from pubmed_app.paper_search import PaperCsvExporter, PaperFilter, PaperSearchRe
 class FakeLanguageModel:
     """실제 OpenAI API를 호출하지 않고 고정 답변을 반환한다."""
 
-    def __init__(self) -> None:
-        """테스트에서 전달된 대화와 논문 문맥을 기록할 목록을 준비한다."""
+    def __init__(self, classifications: list[bool]) -> None:
+        """분류 결과와 전달된 대화·논문 문맥을 기록할 목록을 준비한다."""
 
         self.calls: list[tuple[list[ChatMessage], str]] = []
+        self.classification_calls: list[list[ChatMessage]] = []
+        self._classifications = iter(classifications)
+
+    def classify_literature_question(
+        self,
+        messages: list[ChatMessage],
+    ) -> bool:
+        """테스트가 지정한 순서대로 논문 관련 여부를 반환한다."""
+
+        self.classification_calls.append(list(messages))
+        return next(self._classifications)
 
     def generate_reply(
         self,
@@ -51,6 +64,15 @@ class FeatureFiveSixTest(unittest.TestCase):
                 [
                     ("1", "COVID-19 vaccine study", "A", "Nature", 2024, "Kim"),
                     ("2", "Cancer research", "B", "Cell", 2022, "Lee"),
+                    (
+                        "3",
+                        '"Mourning Parts You Dreamed of Losing-But Not This Way": '
+                        "The Experience of a Nonbinary Person Diagnosed With Breast Cancer.",
+                        "C",
+                        "Journal of Patient Experience",
+                        2026,
+                        "Park",
+                    ),
                 ],
             )
             connection.commit()
@@ -70,7 +92,11 @@ class FeatureFiveSixTest(unittest.TestCase):
 
     def test_chatbot_remembers_previous_keyword(self) -> None:
         memory = ConversationMemory(self.memory_store, "chatbot-user")
-        chatbot = LiteratureChatbot(self.repository, memory, FakeLanguageModel())
+        chatbot = LiteratureChatbot(
+            self.repository,
+            memory,
+            FakeLanguageModel([True, True]),
+        )
         first = chatbot.reply("COVID-19 vaccine 논문 찾아줘")
         follow_up = chatbot.reply("더 보여줘")
         self.assertIn("COVID-19 vaccine study", first)
@@ -80,7 +106,7 @@ class FeatureFiveSixTest(unittest.TestCase):
     def test_paper_question_without_results_does_not_call_openai(self) -> None:
         """논문 질문의 DB 검색 결과가 없으면 OpenAI를 호출하지 않는지 확인한다."""
 
-        language_model = FakeLanguageModel()
+        language_model = FakeLanguageModel([True])
         memory = ConversationMemory(self.memory_store, "no-result-user")
         chatbot = LiteratureChatbot(self.repository, memory, language_model)
 
@@ -92,7 +118,7 @@ class FeatureFiveSixTest(unittest.TestCase):
     def test_general_question_calls_openai_without_paper_context(self) -> None:
         """논문과 무관한 질문은 빈 논문 문맥으로 OpenAI를 호출하는지 확인한다."""
 
-        language_model = FakeLanguageModel()
+        language_model = FakeLanguageModel([False])
         memory = ConversationMemory(self.memory_store, "general-user")
         chatbot = LiteratureChatbot(self.repository, memory, language_model)
 
@@ -101,6 +127,55 @@ class FeatureFiveSixTest(unittest.TestCase):
         self.assertEqual("LLM 답변: ", answer)
         self.assertEqual(1, len(language_model.calls))
         self.assertEqual("", language_model.calls[0][1])
+
+    def test_title_only_input_is_searched_after_semantic_classification(self) -> None:
+        """논문 제목만 입력해도 의미 분류 후 DB 제목 검색을 수행한다."""
+
+        language_model = FakeLanguageModel([True])
+        memory = ConversationMemory(self.memory_store, "title-only-user")
+        chatbot = LiteratureChatbot(self.repository, memory, language_model)
+
+        answer = chatbot.reply(
+            "Mourning Parts You Dreamed of Losing-But Not This Way"
+        )
+
+        self.assertIn("Mourning Parts You Dreamed of Losing-But Not This Way", answer)
+        self.assertEqual(1, len(language_model.classification_calls))
+        self.assertEqual(1, len(language_model.calls))
+
+    @patch("pubmed_app.chatbot.load_dotenv")
+    def test_openai_semantically_classifies_literature_context(
+        self,
+        load_dotenv_mock: Mock,
+    ) -> None:
+        """GPT 구조화 출력에 최근 문맥과 논문 제목 단독 입력을 전달한다."""
+
+        structured_model = Mock()
+        structured_model.invoke.return_value = LiteratureQuestionClassification(
+            is_literature_related=True
+        )
+        chat_model = Mock()
+        chat_model.with_structured_output.return_value = structured_model
+        language_model = OpenAIChatModel(model=chat_model)
+        messages = [
+            ChatMessage(role="assistant", content="무엇을 도와드릴까요?"),
+            ChatMessage(
+                role="user",
+                content="Mourning Parts You Dreamed of Losing-But Not This Way",
+            ),
+        ]
+
+        result = language_model.classify_literature_question(messages)
+
+        self.assertTrue(result)
+        load_dotenv_mock.assert_called_once_with()
+        chat_model.with_structured_output.assert_called_once_with(
+            LiteratureQuestionClassification,
+            method="json_schema",
+        )
+        classifier_messages = structured_model.invoke.call_args.args[0]
+        self.assertEqual(LITERATURE_CLASSIFIER_PROMPT, classifier_messages[0]["content"])
+        self.assertEqual(messages[-1].content, classifier_messages[-1]["content"])
 
     def test_sqlite_recalls_same_user_conversation_after_store_restart(self) -> None:
         """새 SQLite 저장소 객체에서도 같은 사용자의 이전 대화를 읽는지 확인한다."""
