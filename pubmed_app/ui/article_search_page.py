@@ -112,23 +112,24 @@ def _render_results(results: tuple[Article, ...]) -> None:
             "authors": "저자",
         }
     )
-    st.dataframe(
-        display_dataframe,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "PMID": st.column_config.TextColumn(width="small"),
-            "제목": st.column_config.TextColumn(width="large"),
-            "초록": st.column_config.TextColumn(width="large"),
-            "저널": st.column_config.TextColumn(width="medium"),
-            "출판연도": st.column_config.NumberColumn(format="%d"),
-            "저자": st.column_config.TextColumn(width="large"),
-        },
-    )
-    st.download_button(
-        "검색 결과 CSV 다운로드",
-        data=PaperCsvExporter.export(dataframe),
-        file_name="pubmed_papers.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
+    with st.container(border=True, key="article_results_card"):
+        st.dataframe(
+            display_dataframe,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "PMID": st.column_config.TextColumn(width="small"),
+                "제목": st.column_config.TextColumn(width="large"),
+                "초록": st.column_config.TextColumn(width="large"),
+                "저널": st.column_config.TextColumn(width="medium"),
+                "출판연도": st.column_config.NumberColumn(format="%d"),
+                "저자": st.column_config.TextColumn(width="large"),
+            },
+        )
+        st.download_button(
+            "검색 결과 CSV 다운로드",
+            data=PaperCsvExporter.export(dataframe),
+            file_name="pubmed_papers.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )

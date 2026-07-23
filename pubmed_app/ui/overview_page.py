@@ -29,14 +29,28 @@ def render_overview_page(
     )
     metric_columns[3].metric("총 저널 수", f"{overview.total_journals:,}개")
 
-    st.divider()
     year_column, journal_column = st.columns(2)
     with year_column:
-        st.markdown("#### 연도별 논문 수")
-        _render_bar_chart(overview.articles_by_year, "출판연도")
+        with st.container(border=True, key="overview_year_chart"):
+            st.markdown("#### 연도별 논문 수")
+            _render_line_chart(overview.articles_by_year, "출판연도")
     with journal_column:
-        st.markdown("#### 상위 저널")
-        _render_bar_chart(overview.top_journals, "저널")
+        with st.container(border=True, key="overview_journal_chart"):
+            st.markdown("#### 상위 저널")
+            _render_bar_chart(overview.top_journals, "저널")
+
+
+def _render_line_chart(items: tuple[CountByLabel, ...], label_column: str) -> None:
+    """연도별 추이를 시안과 같은 선 그래프로 표시한다."""
+
+    if not items:
+        st.info("표시할 데이터가 없습니다.")
+        return
+
+    chart_data = pd.DataFrame(
+        [{label_column: item.label, "논문 수": item.count} for item in items]
+    )
+    st.line_chart(chart_data, x=label_column, y="논문 수", color="#5C63E6")
 
 
 def _render_bar_chart(items: tuple[CountByLabel, ...], label_column: str) -> None:
@@ -47,4 +61,4 @@ def _render_bar_chart(items: tuple[CountByLabel, ...], label_column: str) -> Non
     chart_data = pd.DataFrame(
         [{label_column: item.label, "논문 수": item.count} for item in items]
     )
-    st.bar_chart(chart_data, x=label_column, y="논문 수", color="#2878B5")
+    st.bar_chart(chart_data, x=label_column, y="논문 수", color="#37A9C9")
