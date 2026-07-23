@@ -7,6 +7,9 @@
 애플리케이션입니다. 저장한 논문은 CSV로 내려받을 수 있으며, 논문 문맥을 활용하는
 OpenAI 챗봇과 개인 의료 조언을 차단하는 안전 미들웨어를 제공합니다.
 
+## 배포 url
+- https://pubmed-webapp.streamlit.app/
+
 ## 주요 기능
 
 - Google OIDC 로그인 및 사용자별 데이터 분리
