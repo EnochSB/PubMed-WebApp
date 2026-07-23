@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from pubmed_app.domain.models import Article, ArticleSearchCriteria
+from pubmed_app.paper_search import PaperCsvExporter
 from pubmed_app.repositories.sqlite_article_repository import ArticleDataUnavailableError
 from pubmed_app.services.article_search_service import (
     ArticleSearchService,
@@ -91,23 +92,20 @@ def render_article_search_page(service: ArticleSearchService) -> None:
 
 
 def _render_results(results: tuple[Article, ...]) -> None:
-    rows = []
-    for article in results:
-        row = asdict(article)
-        rows.append(
-            {
-                "PMID": row["pmid"],
-                "제목": row["title"],
-                "초록": row["abstract"],
-                "저널": row["journal"],
-                "출판연도": row["pub_year"],
-                "저자": row["authors"],
-            }
-        )
-
-    dataframe = pd.DataFrame(rows)
+    # CSV는 DB 필드명을 유지하고, 화면에서만 읽기 쉬운 한국어 열 이름을 사용한다.
+    dataframe = pd.DataFrame(asdict(article) for article in results)
+    display_dataframe = dataframe.rename(
+        columns={
+            "pmid": "PMID",
+            "title": "제목",
+            "abstract": "초록",
+            "journal": "저널",
+            "pub_year": "출판연도",
+            "authors": "저자",
+        }
+    )
     st.dataframe(
-        dataframe,
+        display_dataframe,
         hide_index=True,
         use_container_width=True,
         column_config={
@@ -118,4 +116,11 @@ def _render_results(results: tuple[Article, ...]) -> None:
             "출판연도": st.column_config.NumberColumn(format="%d"),
             "저자": st.column_config.TextColumn(width="large"),
         },
+    )
+    st.download_button(
+        "검색 결과 CSV 다운로드",
+        data=PaperCsvExporter.export(dataframe),
+        file_name="pubmed_papers.csv",
+        mime="text/csv",
+        use_container_width=True,
     )
