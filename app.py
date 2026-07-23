@@ -16,12 +16,16 @@ from pubmed_app.auth import (
     get_authenticated_user,
     render_landing_page,
 )
+from pubmed_app.chat_memory import ChatMemoryError, SQLiteConversationStore
 from pubmed_app.config import AppConfig
 from pubmed_app.paper_search import PaperSearchRepository
 from pubmed_app.repositories.sqlite_article_repository import SQLiteArticleRepository
 from pubmed_app.services.article_search_service import ArticleSearchService
 from pubmed_app.services.overview_service import OverviewService
-from pubmed_app.ui.article_search_page import render_article_search_page
+from pubmed_app.ui.article_search_page import (
+    SEARCH_TAB_REQUEST_KEY,
+    render_article_search_page,
+)
 from pubmed_app.ui.collection_snapshot import (
     LAST_COLLECTION_NEW_COUNT_KEY,
     LAST_COLLECTION_SKIPPED_COUNT_KEY,
@@ -124,6 +128,7 @@ def build_services(
     OverviewService,
     ArticleSearchService,
     PaperSearchRepository,
+    SQLiteConversationStore,
 ]:
     """현재 사용자의 수집·분석·챗봇 저장소를 한곳에서 조립한다."""
 
@@ -133,6 +138,7 @@ def build_services(
         table_name=article_table,
     )
     collection_repository.initialize()
+    
     collection_repository.register_user(user_email, user_display_name)
     article_repository = SQLiteArticleRepository(
         database_path, article_table, user_id=user_id
@@ -140,11 +146,14 @@ def build_services(
     chatbot_repository = PaperSearchRepository(
         database_path, article_table, user_id=user_id
     )
+    chat_memory_store = SQLiteConversationStore(database_path)
+
     return (
         ArticleCollectionService(PubMedClient(), collection_repository),
         OverviewService(article_repository, top_journal_limit=top_journal_limit),
         ArticleSearchService(article_repository),
         chatbot_repository,
+        chat_memory_store,
     )
 
 
@@ -154,8 +163,13 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
     config = AppConfig.from_environment()
 
     try:
-        collection_service, overview_service, search_service, chatbot_repository = (
-            build_services(
+        (
+            collection_service,
+            overview_service,
+            search_service,
+            chatbot_repository,
+            chat_memory_store,
+        ) = build_services(
                 str(config.database_path),
                 config.article_table,
                 config.top_journal_limit,
@@ -164,7 +178,7 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
                 user.display_name,
             )
         )
-    except ArticleRepositoryError as error:
+    except (ArticleRepositoryError, ChatMemoryError) as error:
         st.error(str(error))
         return
 
@@ -185,13 +199,22 @@ def render_authenticated_app(user: AuthenticatedUser) -> None:
         st.metric("신규 수집 논문", f"{collection_snapshot.new_count:,}편")
         st.metric("중복 Skip 논문", f"{collection_snapshot.skipped_count:,}편")
 
-    overview_tab, search_tab, chatbot_tab = st.tabs(["개요", "논문 목록", "챗봇"])
+    # 검색 버튼 콜백이 남긴 요청을 이번 렌더링에만 소비해 검색 탭을 유지한다.
+    default_tab = (
+        "논문 목록"
+        if st.session_state.pop(SEARCH_TAB_REQUEST_KEY, False)
+        else None
+    )
+    overview_tab, search_tab, chatbot_tab = st.tabs(
+        ["개요", "논문 목록", "챗봇"],
+        default=default_tab,
+    )
     with overview_tab:
         render_overview_page(overview_service, collection_snapshot)
     with search_tab:
         render_article_search_page(search_service)
     with chatbot_tab:
-        ChatbotView(chatbot_repository).render()
+        ChatbotView(chatbot_repository, chat_memory_store).render()
 
 
 def main() -> None:

@@ -88,21 +88,34 @@ class PubMedXmlParser:
         citation: ET.Element,
         article_node: ET.Element,
     ) -> int | None:
-        """여러 PubMed 날짜 경로에서 출판연도를 찾아 정수로 반환합니다."""
+        """인쇄·전자 출판연도 중 더 이른 연도를 반환합니다."""
 
-        # PubMed 문서마다 출판일 위치가 달라 여러 경로를 우선순위대로 확인합니다.
-        for path in ("Journal/JournalIssue/PubDate/Year", "ArticleDate/Year"):
-            year = self._text(article_node.find(path))
-            if year.isdigit():
-                return int(year)
+        publication_years: list[int] = []
 
+        # 권·호에 기재된 인쇄 출판연도와 전자 출판연도를 모두 수집합니다.
+        print_year = self._text(
+            article_node.find("Journal/JournalIssue/PubDate/Year")
+        )
+        if print_year.isdigit():
+            publication_years.append(int(print_year))
+
+        for year_node in article_node.findall("ArticleDate/Year"):
+            electronic_year = self._text(year_node)
+            if electronic_year.isdigit():
+                publication_years.append(int(electronic_year))
+
+        # 일부 저널은 인쇄일을 Year 대신 "2020 Jan-Feb" 같은 문자열로 제공합니다.
         medline_date = self._text(
             article_node.find("Journal/JournalIssue/PubDate/MedlineDate")
         )
-        match = re.search(r"(?:18|19|20)\d{2}", medline_date)
-        if match:
-            return int(match.group())
+        medline_year = re.search(r"(?:18|19|20)\d{2}", medline_date)
+        if medline_year:
+            publication_years.append(int(medline_year.group()))
 
+        if publication_years:
+            return min(publication_years)
+
+        # 실제 출판일이 전혀 없을 때만 PubMed 처리 완료 연도를 fallback으로 사용합니다.
         completed_year = self._text(citation.find("DateCompleted/Year"))
         return int(completed_year) if completed_year.isdigit() else None
 

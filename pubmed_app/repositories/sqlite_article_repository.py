@@ -193,8 +193,12 @@ class SQLiteArticleRepository:
         parameters: list[object] = [self._user_id]
 
         if criteria.title_keyword:
-            conditions.append("article.title LIKE ? ESCAPE '\\'")
-            parameters.append(f"%{self._escape_like(criteria.title_keyword)}%")
+            # 검색어는 제목과 초록 중 하나에 포함되면 일치하도록 처리한다.
+            keyword_pattern = f"%{self._escape_like(criteria.title_keyword)}%"
+            conditions.append(
+                "(title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\')"
+            )
+            parameters.extend((keyword_pattern, keyword_pattern))
         if criteria.start_year is not None:
             conditions.append("CAST(article.pub_year AS INTEGER) >= ?")
             parameters.append(criteria.start_year)

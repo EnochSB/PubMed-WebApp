@@ -2,10 +2,33 @@
 
 from __future__ import annotations
 
+import hashlib
+import uuid
+
 import streamlit as st
 
-from pubmed_app.chatbot import ConversationMemory, LiteratureChatbot
+from pubmed_app.chat_memory import ChatMemoryError, SQLiteConversationStore
+from pubmed_app.chatbot import ChatbotError, ConversationMemory, LiteratureChatbot
 from pubmed_app.paper_search import PaperCsvExporter, PaperFilter, PaperSearchRepository
+
+
+CHAT_SESSION_USER_ID_KEY = "_chat_session_user_id"
+
+
+def resolve_chat_user_id() -> str:
+    """로그인 사용자를 식별하고 미로그인 상태에서는 세션별 ID를 반환한다."""
+
+    user = getattr(st, "user", None)
+    if user is not None and getattr(user, "is_logged_in", False):
+        # 이메일 같은 개인정보를 저장소 키에 직접 남기지 않도록 해시로 변환한다.
+        identity = user.get("sub") or user.get("email")
+        if identity:
+            digest = hashlib.sha256(str(identity).encode("utf-8")).hexdigest()
+            return f"authenticated:{digest}"
+
+    if CHAT_SESSION_USER_ID_KEY not in st.session_state:
+        st.session_state[CHAT_SESSION_USER_ID_KEY] = uuid.uuid4().hex
+    return f"anonymous:{st.session_state[CHAT_SESSION_USER_ID_KEY]}"
 
 
 class PaperListView:
@@ -55,24 +78,47 @@ class PaperListView:
 
 
 class ChatbotView:
-    def __init__(self, repository: PaperSearchRepository) -> None:
+    def __init__(
+        self,
+        repository: PaperSearchRepository,
+        memory_store: SQLiteConversationStore,
+    ) -> None:
+        """논문 저장소와 사용자들이 공유할 대화 저장소를 연결한다."""
+
         self.repository = repository
+        self.memory_store = memory_store
 
     def render(self) -> None:
+        """현재 로그인 사용자의 대화만 불러와 챗봇 화면을 렌더링한다."""
+
         st.subheader("논문 탐색 챗봇")
-        if "chat_memory" not in st.session_state:
-            st.session_state.chat_memory = ConversationMemory()
-        memory: ConversationMemory = st.session_state.chat_memory
+        user_id = resolve_chat_user_id()
+        memory = ConversationMemory(self.memory_store, user_id)
+        st.caption("대화 내용은 로그인 사용자별로 SQLite에 저장됩니다.")
 
         if st.button("대화 내용 지우기"):
-            memory.clear()
+            try:
+                memory.clear()
+            except ChatMemoryError as error:
+                st.error(str(error))
+                return
             st.rerun()
 
-        for message in memory.messages:
+        try:
+            messages = memory.messages
+        except ChatMemoryError as error:
+            st.error(str(error))
+            return
+
+        for message in messages:
             with st.chat_message(message.role):
                 st.markdown(message.content)
 
         if question := st.chat_input("저장된 논문에 대해 질문해 주세요"):
             chatbot = LiteratureChatbot(self.repository, memory)
-            chatbot.reply(question)
+            try:
+                chatbot.reply(question)
+            except (ChatbotError, ChatMemoryError) as error:
+                st.error(str(error))
+                return
             st.rerun()

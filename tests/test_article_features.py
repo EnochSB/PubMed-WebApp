@@ -49,7 +49,14 @@ class ArticleFeatureTest(unittest.TestCase):
                 [
                     ("1", "COVID-19 vaccine study", "A", "Journal A", 2022, "Kim"),
                     ("2", "Vaccine effectiveness", "B", "Journal A", 2023, "Lee"),
-                    ("3", "Cancer treatment", "C", "Journal B", 2023, "Park"),
+                    (
+                        "3",
+                        "Cancer treatment",
+                        "Immune marker discovered",
+                        "Journal B",
+                        2023,
+                        "Park",
+                    ),
                     ("4", "Rate 100% response", "D", "Journal C", 2024, "Choi"),
                 ],
             )
@@ -112,6 +119,17 @@ class ArticleFeatureTest(unittest.TestCase):
         )
 
         self.assertEqual([article.pmid for article in results], ["4"])
+
+    def test_search_finds_keyword_in_abstract(self) -> None:
+        results = self.search_service.search(
+            ArticleSearchCriteria(
+                title_keyword="Immune marker",
+                start_year=2020,
+                end_year=2030,
+            )
+        )
+
+        self.assertEqual([article.pmid for article in results], ["3"])
 
     def test_search_rejects_reversed_year_range(self) -> None:
         with self.assertRaises(InvalidSearchCriteriaError):
