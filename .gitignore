@@ -1,5 +1,11 @@
-.venv
+.venv/
+env/
 .env
+.streamlit/secrets.toml
 __pycache__/
 *.py[cod]
+*.db
+*.db-journal
 .uv-cache/
+.pytest_cache/
+.coverage
