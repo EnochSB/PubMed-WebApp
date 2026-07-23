@@ -3,9 +3,38 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import Mock, patch
 
-from pubmed_app.chatbot import ConversationMemory, LiteratureChatbot
+from langchain_core.messages import AIMessage
+
+from pubmed_app.chat_memory import SQLiteConversationStore
+from pubmed_app.chatbot import (
+    OPENAI_MODEL,
+    ChatMessage,
+    ConversationMemory,
+    LiteratureChatbot,
+    OpenAIChatModel,
+)
 from pubmed_app.paper_search import PaperCsvExporter, PaperFilter, PaperSearchRepository
+
+
+class FakeLanguageModel:
+    """실제 OpenAI API를 호출하지 않고 고정 답변을 반환한다."""
+
+    def __init__(self) -> None:
+        """테스트에서 전달된 대화와 논문 문맥을 기록할 목록을 준비한다."""
+
+        self.calls: list[tuple[list[ChatMessage], str]] = []
+
+    def generate_reply(
+        self,
+        messages: list[ChatMessage],
+        paper_context: str,
+    ) -> str:
+        """테스트에서 대화 메모리와 논문 문맥 전달 여부를 확인한다."""
+
+        self.calls.append((list(messages), paper_context))
+        return f"LLM 답변: {paper_context}"
 
 
 class FeatureFiveSixTest(unittest.TestCase):
@@ -27,6 +56,7 @@ class FeatureFiveSixTest(unittest.TestCase):
             connection.commit()
         # 통합 앱과 동일하게 3·4번 기능이 사용하는 articles 테이블을 조회한다.
         self.repository = PaperSearchRepository(self.db_path, "articles")
+        self.memory_store = SQLiteConversationStore(self.db_path)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -39,13 +69,94 @@ class FeatureFiveSixTest(unittest.TestCase):
         self.assertTrue(PaperCsvExporter.export(papers).startswith(b"\xef\xbb\xbf"))
 
     def test_chatbot_remembers_previous_keyword(self) -> None:
-        memory = ConversationMemory()
-        chatbot = LiteratureChatbot(self.repository, memory)
+        memory = ConversationMemory(self.memory_store, "chatbot-user")
+        chatbot = LiteratureChatbot(self.repository, memory, FakeLanguageModel())
         first = chatbot.reply("COVID-19 vaccine 논문 찾아줘")
         follow_up = chatbot.reply("더 보여줘")
         self.assertIn("COVID-19 vaccine study", first)
         self.assertIn("COVID-19 vaccine study", follow_up)
         self.assertEqual(4, len(memory.messages))
+
+    def test_paper_question_without_results_does_not_call_openai(self) -> None:
+        """논문 질문의 DB 검색 결과가 없으면 OpenAI를 호출하지 않는지 확인한다."""
+
+        language_model = FakeLanguageModel()
+        memory = ConversationMemory(self.memory_store, "no-result-user")
+        chatbot = LiteratureChatbot(self.repository, memory, language_model)
+
+        answer = chatbot.reply("quantum entanglement 논문 찾아줘")
+
+        self.assertIn("찾지 못했습니다", answer)
+        self.assertEqual([], language_model.calls)
+
+    def test_general_question_calls_openai_without_paper_context(self) -> None:
+        """논문과 무관한 질문은 빈 논문 문맥으로 OpenAI를 호출하는지 확인한다."""
+
+        language_model = FakeLanguageModel()
+        memory = ConversationMemory(self.memory_store, "general-user")
+        chatbot = LiteratureChatbot(self.repository, memory, language_model)
+
+        answer = chatbot.reply("안녕하세요. 오늘 기분은 어때?")
+
+        self.assertEqual("LLM 답변: ", answer)
+        self.assertEqual(1, len(language_model.calls))
+        self.assertEqual("", language_model.calls[0][1])
+
+    def test_sqlite_recalls_same_user_conversation_after_store_restart(self) -> None:
+        """새 SQLite 저장소 객체에서도 같은 사용자의 이전 대화를 읽는지 확인한다."""
+
+        first_request = ConversationMemory(self.memory_store, "user-1")
+        first_request.add("user", "첫 번째 질문")
+        first_request.last_keyword = "vaccine"
+
+        restarted_store = SQLiteConversationStore(self.db_path)
+        next_request = ConversationMemory(restarted_store, "user-1")
+
+        self.assertEqual("첫 번째 질문", next_request.messages[0].content)
+        self.assertEqual("vaccine", next_request.last_keyword)
+
+    def test_sqlite_isolates_each_user(self) -> None:
+        """같은 SQLite DB에서도 서로 다른 사용자의 대화가 섞이지 않는지 확인한다."""
+
+        first_user = ConversationMemory(self.memory_store, "user-1")
+        second_user = ConversationMemory(self.memory_store, "user-2")
+        first_user.add("user", "사용자 1의 질문")
+        first_user.last_keyword = "cancer"
+        second_user.add("user", "사용자 2의 질문")
+
+        self.assertEqual(["사용자 1의 질문"], [m.content for m in first_user.messages])
+        self.assertEqual(["사용자 2의 질문"], [m.content for m in second_user.messages])
+        self.assertEqual("", second_user.last_keyword)
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-api-key"})
+    @patch("pubmed_app.chatbot.create_agent")
+    @patch("pubmed_app.chatbot.ChatOpenAI")
+    @patch("pubmed_app.chatbot.load_dotenv")
+    def test_openai_model_uses_dotenv_and_gpt_5_4_mini(
+        self,
+        load_dotenv_mock: Mock,
+        chat_openai_mock: Mock,
+        create_agent_mock: Mock,
+    ) -> None:
+        """OpenAI 호출 전에 .env를 읽고 정확한 모델 ID를 사용하는지 확인한다."""
+
+        agent = Mock()
+        agent.invoke.return_value = {"messages": [AIMessage(content="답변")]}
+        create_agent_mock.return_value = agent
+        language_model = OpenAIChatModel()
+
+        answer = language_model.generate_reply(
+            [ChatMessage(role="user", content="논문을 요약해 줘")],
+            "제목: COVID-19 vaccine study",
+        )
+
+        load_dotenv_mock.assert_called_once_with()
+        model_arguments = chat_openai_mock.call_args.kwargs
+        self.assertEqual("gpt-5.4-mini", OPENAI_MODEL)
+        self.assertEqual(OPENAI_MODEL, model_arguments["model"])
+        self.assertTrue(model_arguments["use_responses_api"])
+        self.assertEqual(2, len(create_agent_mock.call_args.kwargs["middleware"]))
+        self.assertEqual("답변", answer)
 
 
 if __name__ == "__main__":

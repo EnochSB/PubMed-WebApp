@@ -10,6 +10,7 @@ from collection_service import ArticleCollectionService
 from database import ArticleRepository, ArticleRepositoryError
 from models import SearchConditions
 from pubmed_client import PubMedApiError, PubMedClient
+from pubmed_app.chat_memory import ChatMemoryError, SQLiteConversationStore
 from pubmed_app.config import AppConfig
 from pubmed_app.paper_search import PaperSearchRepository
 from pubmed_app.repositories.sqlite_article_repository import SQLiteArticleRepository
@@ -115,6 +116,7 @@ def build_services(
     OverviewService,
     ArticleSearchService,
     PaperSearchRepository,
+    SQLiteConversationStore,
 ]:
     """수집·분석·챗봇이 같은 DB와 테이블을 사용하도록 객체를 조립한다."""
 
@@ -122,11 +124,13 @@ def build_services(
     collection_repository.initialize()
     article_repository = SQLiteArticleRepository(database_path, article_table)
     chatbot_repository = PaperSearchRepository(database_path, article_table)
+    chat_memory_store = SQLiteConversationStore(database_path)
     return (
         ArticleCollectionService(PubMedClient(), collection_repository),
         OverviewService(article_repository, top_journal_limit=top_journal_limit),
         ArticleSearchService(article_repository),
         chatbot_repository,
+        chat_memory_store,
     )
 
 
@@ -135,14 +139,18 @@ def main() -> None:
     config = AppConfig.from_environment()
 
     try:
-        collection_service, overview_service, search_service, chatbot_repository = (
-            build_services(
-                str(config.database_path),
-                config.article_table,
-                config.top_journal_limit,
-            )
+        (
+            collection_service,
+            overview_service,
+            search_service,
+            chatbot_repository,
+            chat_memory_store,
+        ) = build_services(
+            str(config.database_path),
+            config.article_table,
+            config.top_journal_limit,
         )
-    except ArticleRepositoryError as error:
+    except (ArticleRepositoryError, ChatMemoryError) as error:
         st.error(str(error))
         return
 
@@ -165,7 +173,7 @@ def main() -> None:
     with search_tab:
         render_article_search_page(search_service)
     with chatbot_tab:
-        ChatbotView(chatbot_repository).render()
+        ChatbotView(chatbot_repository, chat_memory_store).render()
 
 
 if __name__ == "__main__":
