@@ -39,6 +39,7 @@ MEDICAL_ADVICE_NOTICE = (
     "이 앱은 PubMed 메타데이터 분석용이며, 개인 의료 조언, 진단, 처방 관련 질문에는 "
     "답변할 수 없습니다. 의료 관련 결정은 의료 전문가와 상담해 주세요."
 )
+MEDICAL_CLASSIFIER_STREAM_TAG = "medical_intent_classifier"
 MEDICAL_INTENT_CLASSIFIER_PROMPT = """
 당신은 개인 의료 질문을 판별하는 이진 분류기입니다.
 사용자의 문장을 단어 일치가 아니라 전체 의미와 의도로 판단하세요.
@@ -150,6 +151,7 @@ class MedicalAdviceModelCallMiddleware(AgentMiddleware):
 
         # 원래 대화·논문 문맥과 분리된 요청으로 최신 사용자 질문의 의미만 분류한다.
         classification_request = request.override(
+            model=request.model.with_config(tags=[MEDICAL_CLASSIFIER_STREAM_TAG]),
             system_message=SystemMessage(content=MEDICAL_INTENT_CLASSIFIER_PROMPT),
             messages=[HumanMessage(content=prompt)],
             tools=[],

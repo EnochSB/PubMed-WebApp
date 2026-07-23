@@ -13,6 +13,22 @@ from pubmed_app.paper_search import PaperCsvExporter, PaperFilter, PaperSearchRe
 
 
 CHAT_SESSION_USER_ID_KEY = "_chat_session_user_id"
+AI_LOADING_IMAGE_HTML = """
+<div style="display:flex;align-items:center;gap:0.65rem;padding:0.2rem 0;"
+     role="status" aria-label="AI 답변 생성 중">
+  <svg width="30" height="30" viewBox="0 0 30 30"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="15" cy="15" r="11" fill="none" stroke="#d9e2f2" stroke-width="4"/>
+    <path d="M15 4a11 11 0 0 1 11 11" fill="none" stroke="#4f7cff"
+          stroke-width="4" stroke-linecap="round">
+      <animateTransform attributeName="transform" type="rotate"
+                        from="0 15 15" to="360 15 15"
+                        dur="0.8s" repeatCount="indefinite"/>
+    </path>
+  </svg>
+  <span>답변을 생성하고 있습니다...</span>
+</div>
+"""
 
 
 def resolve_chat_user_id() -> str:
@@ -110,15 +126,44 @@ class ChatbotView:
             st.error(str(error))
             return
 
-        for message in messages:
-            with st.chat_message(message.role):
-                st.markdown(message.content)
+        # 대화 영역을 입력창보다 먼저 만들면 새 메시지도 항상 입력창 위에 표시된다.
+        conversation_container = st.container()
+        with conversation_container:
+            for message in messages:
+                with st.chat_message(message.role):
+                    st.markdown(message.content)
 
-        if question := st.chat_input("저장된 논문에 대해 질문해 주세요"):
+        question = st.chat_input("저장된 논문에 대해 질문해 주세요")
+        if question:
             chatbot = LiteratureChatbot(self.repository, memory)
-            try:
-                chatbot.reply(question)
-            except (ChatbotError, ChatMemoryError) as error:
-                st.error(str(error))
-                return
-            st.rerun()
+            with conversation_container:
+                # 모델 응답을 기다리지 않고 새 사용자 입력을 현재 실행에서 즉시 표시한다.
+                with st.chat_message("user"):
+                    st.markdown(question)
+
+                with st.chat_message("assistant"):
+                    loading_placeholder = st.empty()
+                    loading_placeholder.markdown(
+                        AI_LOADING_IMAGE_HTML,
+                        unsafe_allow_html=True,
+                    )
+
+                    def visible_response_stream():
+                        """첫 답변 조각이 도착할 때 로딩 이미지를 제거한다."""
+
+                        first_chunk = True
+                        try:
+                            for chunk in chatbot.stream_reply(question):
+                                if first_chunk:
+                                    loading_placeholder.empty()
+                                    first_chunk = False
+                                yield chunk
+                        finally:
+                            # 오류나 빈 스트림이 발생해도 로딩 이미지가 남지 않게 한다.
+                            loading_placeholder.empty()
+
+                    try:
+                        st.write_stream(visible_response_stream())
+                    except (ChatbotError, ChatMemoryError) as error:
+                        st.error(str(error))
+                        return

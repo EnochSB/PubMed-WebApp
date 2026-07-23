@@ -6,6 +6,8 @@ __pycache__/
 *.py[cod]
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 .uv-cache/
 .pytest_cache/
 .coverage
