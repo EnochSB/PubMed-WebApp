@@ -1,4 +1,4 @@
-"""요구사항 1~6을 조립하는 Streamlit 애플리케이션 진입점."""
+"""메디톡톡 인증과 요구사항 1~6을 조립하는 Streamlit 진입점."""
 
 from __future__ import annotations
 
@@ -10,6 +10,12 @@ from collection_service import ArticleCollectionService
 from database import ArticleRepository, ArticleRepositoryError
 from models import SearchConditions
 from pubmed_client import PubMedApiError, PubMedClient
+from pubmed_app.auth import (
+    AuthenticatedUser,
+    InvalidIdentityError,
+    get_authenticated_user,
+    render_landing_page,
+)
 from pubmed_app.config import AppConfig
 from pubmed_app.paper_search import PaperSearchRepository
 from pubmed_app.repositories.sqlite_article_repository import SQLiteArticleRepository
@@ -110,18 +116,30 @@ def build_services(
     database_path: str,
     article_table: str,
     top_journal_limit: int,
+    user_id: str,
+    user_email: str,
+    user_display_name: str,
 ) -> tuple[
     ArticleCollectionService,
     OverviewService,
     ArticleSearchService,
     PaperSearchRepository,
 ]:
-    """수집·분석·챗봇이 같은 DB와 테이블을 사용하도록 객체를 조립한다."""
+    """현재 사용자의 수집·분석·챗봇 저장소를 한곳에서 조립한다."""
 
-    collection_repository = ArticleRepository(database_path)
+    collection_repository = ArticleRepository(
+        database_path,
+        user_id=user_id,
+        table_name=article_table,
+    )
     collection_repository.initialize()
-    article_repository = SQLiteArticleRepository(database_path, article_table)
-    chatbot_repository = PaperSearchRepository(database_path, article_table)
+    collection_repository.register_user(user_email, user_display_name)
+    article_repository = SQLiteArticleRepository(
+        database_path, article_table, user_id=user_id
+    )
+    chatbot_repository = PaperSearchRepository(
+        database_path, article_table, user_id=user_id
+    )
     return (
         ArticleCollectionService(PubMedClient(), collection_repository),
         OverviewService(article_repository, top_journal_limit=top_journal_limit),
@@ -130,8 +148,9 @@ def build_services(
     )
 
 
-def main() -> None:
-    st.set_page_config(page_title="PubMed 논문 분석", page_icon="📚", layout="wide")
+def render_authenticated_app(user: AuthenticatedUser) -> None:
+    """인증된 사용자에게만 기존 논문 기능을 표시한다."""
+
     config = AppConfig.from_environment()
 
     try:
@@ -140,6 +159,9 @@ def main() -> None:
                 str(config.database_path),
                 config.article_table,
                 config.top_journal_limit,
+                user.user_id,
+                user.email,
+                user.display_name,
             )
         )
     except ArticleRepositoryError as error:
@@ -150,10 +172,14 @@ def main() -> None:
     PubMedCollectionPanel(collection_service).render()
     collection_snapshot = read_collection_snapshot(st.session_state)
 
-    st.title("PubMed 논문 분석 대시보드")
-    st.caption("PubMed 논문을 수집하고 저장된 메타데이터를 분석·탐색합니다.")
+    st.title("메디톡톡")
+    st.caption("내가 수집한 PubMed 논문을 저장하고 분석·탐색합니다.")
 
     with st.sidebar:
+        st.markdown(f"**{user.display_name}**")
+        st.caption(user.email)
+        if st.button("로그아웃", width="stretch"):
+            st.logout()
         st.divider()
         st.header("최근 수집 결과")
         st.metric("신규 수집 논문", f"{collection_snapshot.new_count:,}편")
@@ -166,6 +192,23 @@ def main() -> None:
         render_article_search_page(search_service)
     with chatbot_tab:
         ChatbotView(chatbot_repository).render()
+
+
+def main() -> None:
+    st.set_page_config(page_title="메디톡톡", page_icon="🩺", layout="wide")
+    try:
+        user = get_authenticated_user()
+    except InvalidIdentityError as error:
+        st.error(str(error))
+        if st.button("다시 로그인"):
+            st.logout()
+        return
+
+    if user is None:
+        render_landing_page()
+        return
+
+    render_authenticated_app(user)
 
 
 if __name__ == "__main__":

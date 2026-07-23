@@ -24,9 +24,24 @@ class FeatureFiveSixTest(unittest.TestCase):
                     ("2", "Cancer research", "B", "Cell", 2022, "Lee"),
                 ],
             )
+            connection.execute(
+                """
+                CREATE TABLE user_articles (
+                    user_id TEXT NOT NULL,
+                    pmid TEXT NOT NULL,
+                    PRIMARY KEY (user_id, pmid)
+                )
+                """
+            )
+            connection.executemany(
+                "INSERT INTO user_articles (user_id, pmid) VALUES (?, ?)",
+                [("user-a", "1"), ("user-b", "2")],
+            )
             connection.commit()
         # 통합 앱과 동일하게 3·4번 기능이 사용하는 articles 테이블을 조회한다.
-        self.repository = PaperSearchRepository(self.db_path, "articles")
+        self.repository = PaperSearchRepository(
+            self.db_path, "articles", user_id="user-a"
+        )
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -37,6 +52,10 @@ class FeatureFiveSixTest(unittest.TestCase):
         )
         self.assertEqual(["1"], papers["pmid"].tolist())
         self.assertTrue(PaperCsvExporter.export(papers).startswith(b"\xef\xbb\xbf"))
+
+    def test_other_users_papers_are_hidden(self) -> None:
+        papers = self.repository.search(PaperFilter(title="Cancer"))
+        self.assertTrue(papers.empty)
 
     def test_chatbot_remembers_previous_keyword(self) -> None:
         memory = ConversationMemory()

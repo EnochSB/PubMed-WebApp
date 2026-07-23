@@ -23,7 +23,7 @@ class ArticleFeatureTest(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "pubmed.db"
         self._create_fixture_database()
-        repository = SQLiteArticleRepository(self.database_path)
+        repository = SQLiteArticleRepository(self.database_path, user_id="user-a")
         self.overview_service = OverviewService(repository, top_journal_limit=2)
         self.search_service = ArticleSearchService(repository)
 
@@ -53,21 +53,46 @@ class ArticleFeatureTest(unittest.TestCase):
                     ("4", "Rate 100% response", "D", "Journal C", 2024, "Choi"),
                 ],
             )
+            connection.execute(
+                """
+                CREATE TABLE user_articles (
+                    user_id TEXT NOT NULL,
+                    pmid TEXT NOT NULL,
+                    PRIMARY KEY (user_id, pmid)
+                )
+                """
+            )
+            connection.executemany(
+                "INSERT INTO user_articles (user_id, pmid) VALUES (?, ?)",
+                [
+                    ("user-a", "1"),
+                    ("user-a", "2"),
+                    ("user-a", "4"),
+                    ("user-b", "3"),
+                ],
+            )
             connection.commit()
 
     def test_overview_aggregates_articles_years_and_journals(self) -> None:
         overview = self.overview_service.get_overview()
 
-        self.assertEqual(overview.total_articles, 4)
-        self.assertEqual(overview.total_journals, 3)
+        self.assertEqual(overview.total_articles, 3)
+        self.assertEqual(overview.total_journals, 2)
         self.assertEqual(
             [(item.label, item.count) for item in overview.articles_by_year],
-            [("2022", 1), ("2023", 2), ("2024", 1)],
+            [("2022", 1), ("2023", 1), ("2024", 1)],
         )
         self.assertEqual(
             [(item.label, item.count) for item in overview.top_journals],
-            [("Journal A", 2), ("Journal B", 1)],
+            [("Journal A", 2), ("Journal C", 1)],
         )
+
+    def test_other_users_articles_are_hidden(self) -> None:
+        results = self.search_service.search(
+            ArticleSearchCriteria(title_keyword="Cancer")
+        )
+
+        self.assertEqual(results, ())
 
     def test_search_applies_title_year_and_journal_filters(self) -> None:
         results = self.search_service.search(
